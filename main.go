@@ -17,7 +17,7 @@ func main() {
 
 func start() {
 	// 启动Broker
-	exist := openBroker()
+	_ = openBroker()
 
 	// 启动网络发现模块
 
@@ -28,9 +28,6 @@ func start() {
 	devCode := openRoute()
 
 	// 启动剩余模块
-	if exist {
-		devCode = ""
-	}
 	openModules(devCode)
 }
 
@@ -50,7 +47,7 @@ func openBroker() bool {
 }
 
 func openDevManager() {
-	brokerFile := qio.GetFullPath("./bin/dev-manage.exe")
+	brokerFile := qio.GetFullPath("./bin/device.exe")
 	if qio.PathExists(brokerFile) == false {
 		return
 	}
@@ -59,11 +56,11 @@ func openDevManager() {
 	args := map[string]string{}
 	args["ConfigPath"] = "../config/config.yaml"
 	str, _ := json.Marshal(args)
-	runCmd(exec.Command(brokerFile, string(str)), "Dev-Manager", nil)
+	runCmd(exec.Command(brokerFile, string(str)), "Device", nil)
 }
 
 func openRoute() string {
-	routeFile := qio.GetFullPath("./bin/easy-router.exe")
+	routeFile := qio.GetFullPath("./bin/router.exe")
 	if qio.PathExists(routeFile) == false {
 		return ""
 	}
@@ -98,7 +95,7 @@ func openModules(devCode string) {
 			continue
 		}
 		name := strings.ToLower(qio.GetFileName(f))
-		if name == "broker.exe" || name == "dev-manage.exe" || name == "easy-router.exe" {
+		if name == "broker.exe" || name == "device.exe" || name == "router.exe" {
 			continue
 		}
 
