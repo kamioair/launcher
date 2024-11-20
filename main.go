@@ -1,143 +1,154 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"fmt"
-	"github.com/kamioair/quick-utils/qio"
-	"github.com/kamioair/quick-utils/qlauncher"
+	"github.com/kamioair/qf/utils/qconfig"
+	"github.com/kamioair/qf/utils/qio"
+	"github.com/kamioair/qf/utils/qlauncher"
 	"os/exec"
 	"strings"
 	"sync"
+	"time"
+)
+
+var (
+	configPath = "../config/config.yaml"
 )
 
 func main() {
-	qlauncher.Run(start, stop)
+	qlauncher.Run(start, nil)
 }
 
 func start() {
-	// 启动Broker
-	_ = openBroker()
 
+	launcherConfig := "./launcher.yaml"
+	qconfig.ChangeFilePath(launcherConfig)
+	configPath = qconfig.Get("base", "config", "./config/config.yaml")
+	configPath = qio.GetFullPath(configPath)
+
+	_, _ = fmt.Fprintln(ColorStdout, Reset+"--------------------------------------")
 	// 启动网络发现模块
 
-	// 启动客户端管理模块
-	openDevManager()
+	// 启动Broker
+	openBroker()
 
 	// 启动路由模块
 	devCode := openRoute()
-
-	// 启动剩余模块
-	openModules(devCode)
-}
-
-func stop() {
-
-}
-
-func openBroker() bool {
-	brokerFile := qio.GetFullPath("./bin/broker/broker.exe")
-	if qio.PathExists(brokerFile) == false {
-		return false
+	if devCode == "" {
+		return
 	}
 
-	// 执行命令并捕获输出
-	runCmd(exec.Command(brokerFile), "Broker", nil)
-	return true
+	// 启动功能模块
+	modules := qconfig.Get("", "modules", []string{})
+	for _, m := range modules {
+		openModules(m, devCode)
+	}
+	//openModules(devCode)
+
+	_, _ = fmt.Fprintln(ColorStdout, Reset+"--------------------------------------")
 }
 
-func openDevManager() {
-	brokerFile := qio.GetFullPath("./bin/device.exe")
+func openBroker() {
+	brokerFile := qio.GetFullPath("./bin/broker.exe")
 	if qio.PathExists(brokerFile) == false {
 		return
 	}
 
 	// 执行命令并捕获输出
-	args := map[string]string{}
-	args["ConfigPath"] = "../config/config.yaml"
-	str, _ := json.Marshal(args)
-	runCmd(exec.Command(brokerFile, string(str)), "Device", nil)
+	runCmd(exec.Command(brokerFile, configPath), "broker", func(line string) string {
+		if strings.Contains(line, "ws://127.0.0.1") {
+			sp := strings.Split(line, ":")
+			ssp := strings.Split(sp[len(sp)-1], "/")
+			return fmt.Sprintf("Port:%s", ssp[0])
+		}
+		return ""
+	})
+	time.Sleep(time.Second * 2)
 }
 
 func openRoute() string {
-	routeFile := qio.GetFullPath("./bin/router.exe")
+	routeFile := qio.GetFullPath("./bin/route.exe")
 	if qio.PathExists(routeFile) == false {
 		return ""
 	}
-
 	wg := sync.WaitGroup{}
 	wg.Add(1)
 	code := ""
+
 	// 执行命令并捕获输出
 	args := map[string]string{}
-	args["ConfigPath"] = "../config/config.yaml"
+	args["ConfigPath"] = configPath
 	str, _ := json.Marshal(args)
-	runCmd(exec.Command(routeFile, string(str)), "Broker", func(line string) {
-		if strings.HasPrefix(line, "[DeviceCode]:") {
-			code = strings.TrimPrefix(line, "[DeviceCode]:")
-			code = strings.Trim(code, " ")
+	runCmd(exec.Command(routeFile, string(str)), "route", func(line string) string {
+		if strings.HasPrefix(line, "[DeviceInfo]:") {
+			c := strings.TrimPrefix(line, "[DeviceInfo]:")
+			c = strings.Trim(c, " ")
+			sp := strings.Split(c, "^")
+			code = sp[0]
 			wg.Done()
+			return fmt.Sprintf("Id:%s Name:%s", code, sp[1])
 		}
+		return ""
 	})
 
 	wg.Wait()
+
+	time.Sleep(time.Second * 2)
 	return code
 }
 
-func openModules(devCode string) {
-	files, err := qio.GetFiles("./bin")
-	if err != nil {
+func openModules(modulePath string, devCode string) {
+	modulePath = qio.GetFullPath(modulePath)
+	if qio.PathExists(modulePath) == false {
 		return
 	}
-	for _, f := range files {
-		ext := qio.GetFileExt(f)
-		if strings.ToLower(ext) != ".exe" {
-			continue
-		}
-		name := strings.ToLower(qio.GetFileName(f))
-		if name == "broker.exe" || name == "device.exe" || name == "router.exe" {
-			continue
-		}
 
-		args := map[string]string{}
-		args["ConfigPath"] = "../config/config.yaml"
-		args["DeviceCode"] = devCode
-		str, _ := json.Marshal(args)
-		file := qio.GetFullPath(f)
-		runCmd(exec.Command(file, string(str)), qio.GetFileNameWithoutExt(f), nil)
-	}
+	args := map[string]string{}
+	args["ConfigPath"] = configPath
+	args["DeviceCode"] = devCode
+	str, _ := json.Marshal(args)
+	runCmd(exec.Command(modulePath, string(str)), qio.GetFileNameWithoutExt(modulePath), nil)
+
+	time.Sleep(time.Millisecond * 500)
 }
 
-func runCmd(cmd *exec.Cmd, name string, onLog func(line string)) {
-	wg := sync.WaitGroup{}
-	wg.Add(1)
-
-	go func() {
-		// 获取标准输出的管道
-		stdout, err := cmd.StdoutPipe()
-		if err != nil {
-			fmt.Printf("%s Error obtaining stdout: %s\n", name, err)
-			return
-		}
-
-		// 启动命令
-		if err := cmd.Start(); err != nil {
-			fmt.Printf("%s Error starting command: %s\n", name, err)
-			return
-		}
-
-		// 创建一个扫描器来读取标准输出
-		scanner := bufio.NewScanner(stdout)
-		for scanner.Scan() {
-			line := scanner.Text()
-			fmt.Println(line)
-			if onLog != nil {
-				onLog(line)
-			}
-			if strings.Contains(line, "Started OK") {
-				wg.Done()
-			}
-		}
-	}()
-	wg.Wait()
-}
+//
+//func openDevManager() {
+//	brokerFile := qio.GetFullPath("./bin/device.exe")
+//	if qio.PathExists(brokerFile) == false {
+//		return
+//	}
+//
+//	// 执行命令并捕获输出
+//	args := map[string]string{}
+//	args["ConfigPath"] = "../config/config.yaml"
+//	str, _ := json.Marshal(args)
+//	runCmd(exec.Command(brokerFile, string(str)), "Device", nil)
+//}
+//
+//func openRoute() string {
+//	routeFile := qio.GetFullPath("./bin/router.exe")
+//	if qio.PathExists(routeFile) == false {
+//		return ""
+//	}
+//
+//	wg := sync.WaitGroup{}
+//	wg.Add(1)
+//	code := ""
+//	// 执行命令并捕获输出
+//	args := map[string]string{}
+//	args["ConfigPath"] = "../config/config.yaml"
+//	str, _ := json.Marshal(args)
+//	runCmd(exec.Command(routeFile, string(str)), "Broker", func(line string) {
+//		if strings.HasPrefix(line, "[DeviceCode]:") {
+//			code = strings.TrimPrefix(line, "[DeviceCode]:")
+//			code = strings.Trim(code, " ")
+//			wg.Done()
+//		}
+//	})
+//
+//	wg.Wait()
+//	return code
+//}
+//
