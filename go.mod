@@ -2,7 +2,7 @@ module launcher
 
 go 1.20
 
-require github.com/kamioair/qf v0.0.2
+require github.com/kamioair/qf v0.0.3
 
 require (
 	github.com/fsnotify/fsnotify v1.7.0 // indirect
@@ -30,4 +30,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace github.com/kamioair/qf => ../../qf
+//replace github.com/kamioair/qf => ../../qf
