@@ -34,8 +34,9 @@ func start() {
 	openBroker()
 
 	// 启动路由模块
-	devCode := openRoute()
+	devCode := openRouter()
 	if devCode == "" {
+		fmt.Println("router not find deviceId")
 		return
 	}
 
@@ -44,7 +45,6 @@ func start() {
 	for _, m := range modules {
 		openModules(m, devCode)
 	}
-	//openModules(devCode)
 
 	_, _ = fmt.Fprintln(ColorStdout, Reset+"--------------------------------------")
 }
@@ -67,8 +67,8 @@ func openBroker() {
 	time.Sleep(time.Second * 2)
 }
 
-func openRoute() string {
-	routeFile := qio.GetFullPath("./bin/route.exe")
+func openRouter() string {
+	routeFile := qio.GetFullPath("./bin/router.exe")
 	if qio.PathExists(routeFile) == false {
 		return ""
 	}
@@ -88,6 +88,8 @@ func openRoute() string {
 			code = sp[0]
 			wg.Done()
 			return fmt.Sprintf("Id:%s Name:%s", code, sp[1])
+		} else if strings.HasPrefix(line, "[Ping]:") {
+			fmt.Println("收到Ping请求，表示网络连接成功...")
 		}
 		return ""
 	})
