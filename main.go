@@ -6,7 +6,9 @@ import (
 	"github.com/kamioair/qf/utils/qconfig"
 	"github.com/kamioair/qf/utils/qio"
 	"github.com/kamioair/qf/utils/qlauncher"
+	"os"
 	"os/exec"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -21,6 +23,12 @@ func main() {
 }
 
 func start() {
+
+	// 设置控制台输出编码为 UTF-8
+	cmd := exec.Command("chcp", "65001")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	cmd.Run()
 
 	launcherConfig := "./launcher.yaml"
 	qconfig.ChangeFilePath(launcherConfig)
@@ -51,6 +59,9 @@ func start() {
 
 func openBroker() {
 	brokerFile := qio.GetFullPath("./bin/broker.exe")
+	if runtime.GOOS == "linux" {
+		brokerFile = qio.GetFullPath("./bin/broker")
+	}
 	if qio.PathExists(brokerFile) == false {
 		return
 	}
@@ -69,6 +80,9 @@ func openBroker() {
 
 func openRouter() string {
 	routeFile := qio.GetFullPath("./bin/router.exe")
+	if runtime.GOOS == "linux" {
+		routeFile = qio.GetFullPath("./bin/router")
+	}
 	if qio.PathExists(routeFile) == false {
 		return ""
 	}
